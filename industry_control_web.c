@@ -5,6 +5,10 @@
 #include "hardware/i2c.h"
 #include "lib/ssd1306.h"
 #include "lib/font.h"
+#include "hardware/pio.h"
+#include "industry_control_web.pio.h"
+#include "lib/config_matriz.h"
+#include "lib/pwm_config.h"
 #include "pico/stdlib.h"         // Biblioteca da Raspberry Pi Pico para funções padrão (GPIO, temporização, etc.)
 #include "hardware/adc.h"        // Biblioteca da Raspberry Pi Pico para manipulação do conversor ADC
 #include "pico/cyw43_arch.h"     // Biblioteca para arquitetura Wi-Fi da Pico com CYW43  
@@ -27,6 +31,9 @@
 #define I2C_SDA 14
 #define I2C_SCL 15
 #define endereco 0x3C
+
+#define BUZZER_PIN 10
+#define servo 8
 
 ssd1306_t ssd; 
 
@@ -53,7 +60,9 @@ int main()
     // Inicializar os Pinos GPIO para acionamento dos LEDs da BitDogLab
     gpio_init_bitdog();
 
-    displayOled();
+    displayOled(); //Config displayOled
+
+    controlaServo(servo, 1470); //Coloca o servo em posição 0
 
     //Inicializa a arquitetura do cyw43
     while (cyw43_arch_init())
@@ -178,12 +187,17 @@ static err_t tcp_server_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
 // Tratamento do request do usuário - digite aqui
 void user_request(char **request){
 
+    PIO pio = pio_config();
+
     if (strstr(*request, "GET /estoque_1") != NULL)
     {
         gpio_put(LED_RED_PIN, 0);
         gpio_put(LED_GREEN_PIN, 0);
         gpio_put(LED_BLUE_PIN, 1);
-        ssd1306_draw_string(&ssd, "Estoque 1", 10, 53); // Desenha uma string
+        define_numero(1, pio, 0);
+        controlaBuzzer(BUZZER_PIN, 150);
+        controlaServo(servo, 985);
+        ssd1306_draw_string(&ssd, "Estoque 1   ", 10, 53); // Desenha uma string
         ssd1306_send_data(&ssd);
     }
     else if (strstr(*request, "GET /estoque_2") != NULL)
@@ -191,13 +205,16 @@ void user_request(char **request){
         gpio_put(LED_RED_PIN, 0);
         gpio_put(LED_BLUE_PIN, 0);
         gpio_put(LED_GREEN_PIN, 1);
-        ssd1306_draw_string(&ssd, "Estoque 2", 10, 53); // Desenha uma string
+        define_numero(0, pio, 0);
+        controlaBuzzer(BUZZER_PIN, 150);
+        controlaServo(servo, 1930);
+        ssd1306_draw_string(&ssd, "Estoque 2   ", 10, 53); // Desenha uma string
         ssd1306_send_data(&ssd);
     }
     else if (strstr(*request, "GET /motor_on") != NULL)
     {
         gpio_put(LED_RED_PIN, 0);
-        ssd1306_draw_string(&ssd, "Ativado", 10, 31); // Desenha uma string
+        ssd1306_draw_string(&ssd, "Ativado    ", 10, 31); // Desenha uma string
         ssd1306_send_data(&ssd);
     }
     else if (strstr(*request, "GET /motor_off") != NULL)
@@ -205,10 +222,16 @@ void user_request(char **request){
         gpio_put(LED_BLUE_PIN, 0);
         gpio_put(LED_GREEN_PIN, 0);
         gpio_put(LED_RED_PIN, 1);
-        ssd1306_draw_string(&ssd, "Desativado", 10, 31); // Desenha uma string
+        define_numero(2, pio, 0);
+        ssd1306_draw_string(&ssd, "Desativado  ", 10, 31); // Desenha uma string
         ssd1306_send_data(&ssd);
     }
 };
+
+static err_t http_sent_callback(void *arg, struct tcp_pcb *tpcb, u16_t len){
+    tcp_close(tpcb);
+    return ERR_OK;
+}
 
 // Função de callback para processar requisições HTTP
 static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
@@ -216,9 +239,10 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
     if (!p)
     {
         tcp_close(tpcb);
-        tcp_recv(tpcb, NULL);
         return ERR_OK;
     }
+
+    tcp_recved(tpcb, p->len);
 
     // Alocação do request na memória dinámica
     char *request = (char *)malloc(p->len + 1);
@@ -237,6 +261,7 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
     snprintf(html, sizeof(html), // Formatar uma string e armazená-la em um buffer de caracteres
 "HTTP/1.1 200 OK\r\n"
 "Content-Type: text/html\r\n"
+"Connection: close\r\n"
 "\r\n"
 "<!DOCTYPE html>\n"
 "<html>\n"
@@ -277,6 +302,7 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
 
     // Escreve dados para envio (mas não os envia imediatamente).
     tcp_write(tpcb, html, strlen(html), TCP_WRITE_FLAG_COPY);
+    tcp_sent(tpcb, http_sent_callback);
 
     // Envia a mensagem
     tcp_output(tpcb);
@@ -288,5 +314,9 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
     pbuf_free(p);
 
     return ERR_OK;
+    
 }
+
+
+
 

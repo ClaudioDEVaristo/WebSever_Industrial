@@ -80,7 +80,10 @@ pico_sdk_init()
 add_executable(industry_control_web 
 industry_control_web.c 
 lib/ssd1306.c
+industry_control_web.pio
 )
+
+pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/industry_control_web.pio)
 
 pico_set_program_name(industry_control_web "industry_control_web")
 pico_set_program_version(industry_control_web "0.1")
@@ -95,12 +98,15 @@ target_link_libraries(industry_control_web
         hardware_gpio
         hardware_adc
         hardware_i2c
+        hardware_pio
+        hardware_pwm
         pico_cyw43_arch_lwip_threadsafe_background
 )
 
 # Add the standard include files to the build
-target_include_directories(industry_control_web PRIVATE
+target_include_directories(industry_control_web PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
     ${PICO_SDK_PATH}/lib/lwip/src/include
     ${PICO_SDK_PATH}/lib/lwip/src/include/arch
     ${PICO_SDK_PATH}/lib/lwip/src/include/lwip
@@ -114,4 +120,5 @@ target_sources(industry_control_web PRIVATE
 
 # Add any user requested libraries
 
-pico_add_extra_outputs(industry_control_web)
+pico_add_extra_outputs(industry_control_web
+)
