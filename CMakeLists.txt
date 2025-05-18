@@ -100,6 +100,7 @@ target_link_libraries(industry_control_web
         hardware_i2c
         hardware_pio
         hardware_pwm
+        hardware_irq
         pico_cyw43_arch_lwip_threadsafe_background
 )
 

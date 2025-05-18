@@ -34,8 +34,11 @@
 
 #define BUZZER_PIN 10
 #define servo 8
+#define esteira 9
 
-ssd1306_t ssd; 
+ssd1306_t ssd;
+int numero_atual = 0;
+int ultimo_numero = 0; 
 
 // Inicializar os Pinos GPIO para acionamento dos LEDs da BitDogLab
 void gpio_init_bitdog(void);
@@ -57,7 +60,7 @@ int main()
     //Inicializa todos os tipos de bibliotecas stdio padrão presentes que estão ligados ao binário.
     stdio_init_all();
 
-    // Inicializar os Pinos GPIO para acionamento dos LEDs da BitDogLab
+    // Inicializar os Pinos GPIO para acionamento dos LEDs e botão da BitDogLab
     gpio_init_bitdog();
 
     displayOled(); //Config displayOled
@@ -71,7 +74,7 @@ int main()
         sleep_ms(100);
         return -1;
     }
-
+    
     // GPIO do CI CYW43 em nível baixo
     cyw43_arch_gpio_put(LED_PIN, 0);
 
@@ -124,7 +127,7 @@ int main()
         * quando se utiliza um estilo de sondagem pico_cyw43_arch 
         */
         cyw43_arch_poll(); // Necessário para manter o Wi-Fi ativo
-        sleep_ms(100);      // Reduz o uso da CPU
+        sleep_ms(50);      // Reduz o uso da CPU
         
     }
 
@@ -149,6 +152,10 @@ void gpio_init_bitdog(void){
     gpio_init(LED_RED_PIN);
     gpio_set_dir(LED_RED_PIN, GPIO_OUT);
     gpio_put(LED_RED_PIN, false);
+
+    gpio_init(esteira);
+    gpio_set_dir(esteira, GPIO_OUT);
+    
 }
 
 void displayOled(){
@@ -199,6 +206,7 @@ void user_request(char **request){
         controlaServo(servo, 985);
         ssd1306_draw_string(&ssd, "Estoque 1   ", 10, 53); // Desenha uma string
         ssd1306_send_data(&ssd);
+        numero_atual = 1;
     }
     else if (strstr(*request, "GET /estoque_2") != NULL)
     {
@@ -210,28 +218,30 @@ void user_request(char **request){
         controlaServo(servo, 1930);
         ssd1306_draw_string(&ssd, "Estoque 2   ", 10, 53); // Desenha uma string
         ssd1306_send_data(&ssd);
+        numero_atual = 2;
     }
     else if (strstr(*request, "GET /motor_on") != NULL)
     {
         gpio_put(LED_RED_PIN, 0);
+        gpio_put(esteira, 1);
+        define_numero(ultimo_numero, pio, 0);
         ssd1306_draw_string(&ssd, "Ativado    ", 10, 31); // Desenha uma string
         ssd1306_send_data(&ssd);
     }
     else if (strstr(*request, "GET /motor_off") != NULL)
     {
+        ultimo_numero = numero_atual;
         gpio_put(LED_BLUE_PIN, 0);
         gpio_put(LED_GREEN_PIN, 0);
         gpio_put(LED_RED_PIN, 1);
+        gpio_put(esteira, 0);
         define_numero(2, pio, 0);
         ssd1306_draw_string(&ssd, "Desativado  ", 10, 31); // Desenha uma string
         ssd1306_send_data(&ssd);
     }
 };
 
-static err_t http_sent_callback(void *arg, struct tcp_pcb *tpcb, u16_t len){
-    tcp_close(tpcb);
-    return ERR_OK;
-}
+
 
 // Função de callback para processar requisições HTTP
 static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
@@ -261,7 +271,7 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
     snprintf(html, sizeof(html), // Formatar uma string e armazená-la em um buffer de caracteres
 "HTTP/1.1 200 OK\r\n"
 "Content-Type: text/html\r\n"
-"Connection: close\r\n"
+"Connection: keep-alive\r\n"
 "\r\n"
 "<!DOCTYPE html>\n"
 "<html>\n"
@@ -302,7 +312,6 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
 
     // Escreve dados para envio (mas não os envia imediatamente).
     tcp_write(tpcb, html, strlen(html), TCP_WRITE_FLAG_COPY);
-    tcp_sent(tpcb, http_sent_callback);
 
     // Envia a mensagem
     tcp_output(tpcb);
